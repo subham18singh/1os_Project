@@ -79,3 +79,66 @@ static double GetMemoryUsage(void) {
     if (!GlobalMemoryStatusEx(&statex)) return 0.0;
     return (double)statex.dwMemoryLoad; // percent
 }
+
+static void UpdateProcessList(void) {
+    // Save selected PID if any
+    DWORD selectedPid = 0;
+    int selIdx = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
+    if (selIdx != -1) {
+        LVITEM lvSel;
+        memset(&lvSel, 0, sizeof(lvSel));
+        lvSel.iItem = selIdx; lvSel.iSubItem = 0; lvSel.mask = LVIF_PARAM;
+        if (ListView_GetItem(hListView, &lvSel)) selectedPid = (DWORD)lvSel.lParam;
+    }
+
+    ListView_DeleteAllItems(hListView);
+
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) return;
+
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    int index = 0;
+    if (Process32First(hSnapshot, &pe32)) {
+        do {
+            LVITEM lvItem;
+            memset(&lvItem, 0, sizeof(lvItem));
+            lvItem.mask = LVIF_TEXT | LVIF_PARAM;
+            lvItem.iItem = index;
+            lvItem.iSubItem = 0;
+            lvItem.pszText = pe32.szExeFile;
+            lvItem.lParam = (LPARAM)pe32.th32ProcessID;
+            ListView_InsertItem(hListView, &lvItem);
+
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%lu", (unsigned long)pe32.th32ProcessID);
+            ListView_SetItemText(hListView, index, 1, buf);
+
+            snprintf(buf, sizeof(buf), "%lu", (unsigned long)pe32.cntThreads);
+            ListView_SetItemText(hListView, index, 2, buf);
+
+            HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pe32.th32ProcessID);
+            if (hProcess) {
+                PROCESS_MEMORY_COUNTERS pmc;
+                if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc))) {
+                    snprintf(buf, sizeof(buf), "%.2f MB", (double)pmc.WorkingSetSize / (1024.0 * 1024.0));
+                    ListView_SetItemText(hListView, index, 3, buf);
+                }
+                CloseHandle(hProcess);
+            } else {
+                ListView_SetItemText(hListView, index, 3, "N/A");
+            }
+
+            // Restore selection by PID after insertion
+            if (selectedPid && selectedPid == (DWORD)pe32.th32ProcessID) {
+                ListView_SetItemState(hListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+                ListView_EnsureVisible(hListView, index, FALSE);
+            }
+
+            index++;
+        } while (Process32Next(hSnapshot, &pe32));
+    }
+
+    CloseHandle(hSnapshot);
+}
