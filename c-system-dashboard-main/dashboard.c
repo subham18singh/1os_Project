@@ -1,9 +1,7 @@
-
 #define _WIN32_IE 0x0600
 #define _WIN32_WINNT 0x0600
 #define WINVER 0x0600
 
-#include <sdkddkver.h>
 #include <windows.h>
 #include <commctrl.h>
 #include <tlhelp32.h>
@@ -22,13 +20,11 @@
 
 #define HISTORY_SIZE 60
 
-// Color Constants
-#define COLOR_GRAPH_BG     RGB(20, 20, 20)
-#define COLOR_GRAPH_GRID   RGB(60, 60, 60)
-#define COLOR_CPU_LINE     RGB(0, 200, 0)
-#define COLOR_MEM_LINE     RGB(0, 150, 255)
+#define COLOR_GRAPH_BG RGB(20, 20, 20)
+#define COLOR_GRAPH_GRID RGB(60, 60, 60)
+#define COLOR_CPU_LINE RGB(0, 200, 0)
+#define COLOR_MEM_LINE RGB(0, 150, 255)
 
-// Globals
 HINSTANCE hInst;
 HWND hMainWnd, hListView, hBtnKill;
 double cpuHistory[HISTORY_SIZE];
@@ -38,7 +34,8 @@ int historyMsgIndex = 0;
 // CPU Calculation Globals
 ULARGE_INTEGER lastIdleTime, lastKernelTime, lastUserTime;
 
-void InitCPU(void) {
+void InitCPU(void)
+{
     FILETIME idleTime, kernelTime, userTime;
     GetSystemTimes(&idleTime, &kernelTime, &userTime);
     lastIdleTime.LowPart = idleTime.dwLowDateTime;
@@ -51,57 +48,75 @@ void InitCPU(void) {
 
 // Calculates global CPU usage percentage by comparing system times
 // between two intervals. Returns value between 0.0 and 100.0.
-static double GetCPUUsage(void) {
+static double GetCPUUsage(void)
+{
     FILETIME idleTime, kernelTime, userTime;
-    if (!GetSystemTimes(&idleTime, &kernelTime, &userTime)) return 0.0;
+    if (!GetSystemTimes(&idleTime, &kernelTime, &userTime))
+        return 0.0;
 
     ULARGE_INTEGER idle, kernel, user;
-    idle.LowPart = idleTime.dwLowDateTime; idle.HighPart = idleTime.dwHighDateTime;
-    kernel.LowPart = kernelTime.dwLowDateTime; kernel.HighPart = kernelTime.dwHighDateTime;
-    user.LowPart = userTime.dwLowDateTime; user.HighPart = userTime.dwHighDateTime;
+    idle.LowPart = idleTime.dwLowDateTime;
+    idle.HighPart = idleTime.dwHighDateTime;
+    kernel.LowPart = kernelTime.dwLowDateTime;
+    kernel.HighPart = kernelTime.dwHighDateTime;
+    user.LowPart = userTime.dwLowDateTime;
+    user.HighPart = userTime.dwHighDateTime;
 
     ULONGLONG idleDiff = idle.QuadPart - lastIdleTime.QuadPart;
     ULONGLONG kernelDiff = kernel.QuadPart - lastKernelTime.QuadPart;
     ULONGLONG userDiff = user.QuadPart - lastUserTime.QuadPart;
 
-    lastIdleTime = idle; lastKernelTime = kernel; lastUserTime = user;
+    lastIdleTime = idle;
+    lastKernelTime = kernel;
+    lastUserTime = user;
 
     ULONGLONG total = kernelDiff + userDiff;
-    if (total == 0) return 0.0;
+    if (total == 0)
+        return 0.0;
     return (double)(total - idleDiff) * 100.0 / (double)total;
 }
 
 // Retrieves global memory usage percentage via GlobalMemoryStatusEx.
-static double GetMemoryUsage(void) {
+static double GetMemoryUsage(void)
+{
     MEMORYSTATUSEX statex;
     memset(&statex, 0, sizeof(statex));
     statex.dwLength = sizeof(statex);
-    if (!GlobalMemoryStatusEx(&statex)) return 0.0;
+    if (!GlobalMemoryStatusEx(&statex))
+        return 0.0;
     return (double)statex.dwMemoryLoad; // percent
 }
 
-static void UpdateProcessList(void) {
+static void UpdateProcessList(void)
+{
     // Save selected PID if any
     DWORD selectedPid = 0;
     int selIdx = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
-    if (selIdx != -1) {
+    if (selIdx != -1)
+    {
         LVITEM lvSel;
         memset(&lvSel, 0, sizeof(lvSel));
-        lvSel.iItem = selIdx; lvSel.iSubItem = 0; lvSel.mask = LVIF_PARAM;
-        if (ListView_GetItem(hListView, &lvSel)) selectedPid = (DWORD)lvSel.lParam;
+        lvSel.iItem = selIdx;
+        lvSel.iSubItem = 0;
+        lvSel.mask = LVIF_PARAM;
+        if (ListView_GetItem(hListView, &lvSel))
+            selectedPid = (DWORD)lvSel.lParam;
     }
 
     ListView_DeleteAllItems(hListView);
 
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) return;
+    if (hSnapshot == INVALID_HANDLE_VALUE)
+        return;
 
     PROCESSENTRY32 pe32;
     pe32.dwSize = sizeof(PROCESSENTRY32);
 
     int index = 0;
-    if (Process32First(hSnapshot, &pe32)) {
-        do {
+    if (Process32First(hSnapshot, &pe32))
+    {
+        do
+        {
             LVITEM lvItem;
             memset(&lvItem, 0, sizeof(lvItem));
             lvItem.mask = LVIF_TEXT | LVIF_PARAM;
@@ -119,19 +134,24 @@ static void UpdateProcessList(void) {
             ListView_SetItemText(hListView, index, 2, buf);
 
             HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pe32.th32ProcessID);
-            if (hProcess) {
+            if (hProcess)
+            {
                 PROCESS_MEMORY_COUNTERS pmc;
-                if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc))) {
+                if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc)))
+                {
                     snprintf(buf, sizeof(buf), "%.2f MB", (double)pmc.WorkingSetSize / (1024.0 * 1024.0));
                     ListView_SetItemText(hListView, index, 3, buf);
                 }
                 CloseHandle(hProcess);
-            } else {
+            }
+            else
+            {
                 ListView_SetItemText(hListView, index, 3, "N/A");
             }
 
             // Restore selection by PID after insertion
-            if (selectedPid && selectedPid == (DWORD)pe32.th32ProcessID) {
+            if (selectedPid && selectedPid == (DWORD)pe32.th32ProcessID)
+            {
                 ListView_SetItemState(hListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
                 ListView_EnsureVisible(hListView, index, FALSE);
             }
@@ -141,4 +161,35 @@ static void UpdateProcessList(void) {
     }
 
     CloseHandle(hSnapshot);
+}
+
+static void KillSelectedProcess(void)
+{
+    int iPos = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
+    if (iPos == -1)
+        return;
+
+    LVITEM lvItem;
+    memset(&lvItem, 0, sizeof(lvItem));
+    lvItem.mask = LVIF_PARAM;
+    lvItem.iItem = iPos;
+    lvItem.iSubItem = 0;
+    if (!ListView_GetItem(hListView, &lvItem))
+        return;
+
+    DWORD pid = (DWORD)lvItem.lParam;
+    HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+    if (hProcess)
+    {
+        TerminateProcess(hProcess, 1);
+        CloseHandle(hProcess);
+        UpdateProcessList();
+    }
+    else
+    {
+        DWORD errCode = GetLastError();
+        char msgBuf[128];
+        snprintf(msgBuf, sizeof(msgBuf), "Failed to terminate process. Error code: %lu", errCode);
+        MessageBox(hMainWnd, msgBuf, "Error", MB_OK | MB_ICONERROR);
+    }
 }
