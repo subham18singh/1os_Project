@@ -193,3 +193,27 @@ static void KillSelectedProcess(void)
         MessageBox(hMainWnd, msgBuf, "Error", MB_OK | MB_ICONERROR);
     }
 }
+
+static void KillSelectedProcess(void)
+{
+    int iPos = ListView_GetNextItem(hListView, 0, LVNI_SELECTED);
+    if (iPos == -1)
+        return;
+
+    LVITEM lvItem;
+    lvItem.mask = LVIF_PARAM;
+    lvItem.iItem = iPos;
+    lvItem.iSubItem = 1;
+
+    if (!ListView_GetItem(hListView, &lvItem))
+        return;
+
+    DWORD pid = (DWORD)lvItem.lParam;
+
+    HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+
+    TerminateProcess(hProcess, 1);
+    CloseHandle(hProcess);
+
+    MessageBox(hMainWnd, "Process terminated successfully!", "Success", MB_OK);
+}
