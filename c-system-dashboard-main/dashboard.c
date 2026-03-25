@@ -193,27 +193,33 @@ static void KillSelectedProcess(void)
         MessageBox(hMainWnd, msgBuf, "Error", MB_OK | MB_ICONERROR);
     }
 }
-
 static void KillSelectedProcess(void)
 {
-    int iPos = ListView_GetNextItem(hListView, 0, LVNI_SELECTED);
+    int iPos = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
     if (iPos == -1)
         return;
 
     LVITEM lvItem;
+    memset(&lvItem, 0, sizeof(lvItem));
     lvItem.mask = LVIF_PARAM;
     lvItem.iItem = iPos;
-    lvItem.iSubItem = 1;
-
+    lvItem.iSubItem = 0;
     if (!ListView_GetItem(hListView, &lvItem))
         return;
 
     DWORD pid = (DWORD)lvItem.lParam;
-
     HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-
-    TerminateProcess(hProcess, 1);
-    CloseHandle(hProcess);
-
-    MessageBox(hMainWnd, "Process terminated successfully!", "Success", MB_OK);
+    if (hProcess)
+    {
+        TerminateProcess(hProcess, 1);
+        CloseHandle(hProcess);
+        UpdateProcessList();
+    }
+    else
+    {
+        DWORD errCode = GetLastError();
+        char msgBuf[128];
+        snprintf(msgBuf, sizeof(msgBuf), "Failed to terminate process. Error code: %lu", errCode);
+        MessageBox(hMainWnd, msgBuf, "Error", MB_OK | MB_ICONERROR);
+    }
 }
