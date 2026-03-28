@@ -193,33 +193,50 @@ static void KillSelectedProcess(void)
         MessageBox(hMainWnd, msgBuf, "Error", MB_OK | MB_ICONERROR);
     }
 }
-static void KillSelectedProcess(void)
-{
-    int iPos = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
-    if (iPos == -1)
-        return;
+static void DrawGraph(HDC hdc, RECT rect, double* history, int historyIdx, COLORREF color, const char* label) {
+    // Background
+    HBRUSH hBrushBg = CreateSolidBrush(COLOR_GRAPH_BG);
+    FillRect(hdc, &rect, hBrushBg);
+    DeleteObject(hBrushBg);
 
-    LVITEM lvItem;
-    memset(&lvItem, 0, sizeof(lvItem));
-    lvItem.mask = LVIF_PARAM;
-    lvItem.iItem = iPos;
-    lvItem.iSubItem = 0;
-    if (!ListView_GetItem(hListView, &lvItem))
-        return;
+    // Grid
+    HPEN hPenGrid = CreatePen(PS_DOT, 1, COLOR_GRAPH_GRID);
+    HPEN hOldPen = (HPEN)SelectObject(hdc, hPenGrid);
+    for (int i = 0; i < 4; ++i) {
+        int y = rect.top + i * (rect.bottom - rect.top) / 4;
+        MoveToEx(hdc, rect.left, y, NULL);
+        LineTo(hdc, rect.right, y);
+    }
+    SelectObject(hdc, hOldPen);
+    DeleteObject(hPenGrid);
 
-    DWORD pid = (DWORD)lvItem.lParam;
-    HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-    if (hProcess)
-    {
-        TerminateProcess(hProcess, 1);
-        CloseHandle(hProcess);
-        UpdateProcessList();
+    // Label
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, color);
+    TextOutA(hdc, rect.left + 6, rect.top + 4, label, (int)strlen(label));
+
+    char valBuf[32];
+    double lastVal = history[(historyIdx - 1 + HISTORY_SIZE) % HISTORY_SIZE];
+    snprintf(valBuf, sizeof(valBuf), "%.1f%%", lastVal);
+    TextOutA(hdc, rect.right - 60, rect.top + 4, valBuf, (int)strlen(valBuf));
+
+    // Line
+    HPEN hPenLine = CreatePen(PS_SOLID, 2, color);
+    hOldPen = (HPEN)SelectObject(hdc, hPenLine);
+
+    int width = rect.right - rect.left;
+    int height = rect.bottom - rect.top;
+    double stepX = (double)width / (HISTORY_SIZE - 1);
+
+    for (int i = 0; i < HISTORY_SIZE; ++i) {
+        int idx = (historyIdx + i) % HISTORY_SIZE;
+        double val = history[idx];
+        int x = rect.left + (int)(i * stepX + 0.5);
+        int y = rect.bottom - (int)(val / 100.0 * (double)height + 0.5);
+        if (i == 0) MoveToEx(hdc, x, y, NULL);
+        else LineTo(hdc, x, y);
     }
-    else
-    {
-        DWORD errCode = GetLastError();
-        char msgBuf[128];
-        snprintf(msgBuf, sizeof(msgBuf), "Failed to terminate process. Error code: %lu", errCode);
-        MessageBox(hMainWnd, msgBuf, "Error", MB_OK | MB_ICONERROR);
-    }
+
+    SelectObject(hdc, hOldPen);
+    DeleteObject(hPenLine);
 }
