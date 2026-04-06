@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SysPulse — Process Monitor</title>
+
+  <!-- Google Fonts: Space Mono (mono data) + Barlow Condensed (headings) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <link rel="stylesheet" href="/static/css/dashboard.css"/>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     LOGIN OVERLAY
+════════════════════════════════════════════ -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-box">
+    <div class="login-logo">
+      <span class="logo-pulse"></span>
+      <span class="logo-text">SYS<em>PULSE</em></span>
+    </div>
+    <p class="login-sub">Real-Time Process Monitor</p>
+
+    <div class="field-group">
+      <label>Username</label>
+      <input id="loginUser" type="text" placeholder="admin" autocomplete="username"/>
+    </div>
+    <div class="field-group">
+      <label>Password</label>
+      <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password"/>
+    </div>
+    <p id="loginError" class="login-error"></p>
+    <button id="loginBtn" class="btn-login">SIGN IN</button>
+    <p class="login-hint">Demo: admin / admin123</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MAIN APP
+════════════════════════════════════════════ -->
+<div id="app" class="app hidden">
+
+  <!-- ── Top navbar ── -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo-pulse small"></span>
+      <span class="nav-brand">SYS<em>PULSE</em></span>
+    </div>
+    <div class="topbar-center">
+      <span id="sysTime" class="sys-time">--:--:--</span>
+      <span id="uptime"  class="uptime-badge">↑ --</span>
+    </div>
+    <div class="topbar-right">
+      <button id="themeToggle" class="icon-btn" title="Toggle theme">◑</button>
+      <button id="exportBtn"   class="icon-btn" title="Export CSV">⬇</button>
+      <button id="logoutBtn"   class="icon-btn" title="Logout">⏻</button>
+      <span id="currentUser"  class="user-badge">admin</span>
+    </div>
+  </header>
+
+  <!-- ── Stats strip ── -->
+  <section class="stats-strip">
+
+    <div class="stat-card" id="cpuCard">
+      <div class="stat-label">CPU</div>
+      <div class="stat-value" id="cpuPct">--%</div>
+      <div class="stat-bar-wrap"><div class="stat-bar" id="cpuBar"></div></div>
+      <div class="stat-sub" id="cpuFreq">-- MHz · -- cores</div>
+    </div>
+
+    <div class="stat-card" id="memCard">
+      <div class="stat-label">MEMORY</div>
+      <div class="stat-value" id="memPct">--%</div>
+      <div class="stat-bar-wrap"><div class="stat-bar" id="memBar"></div></div>
+      <div class="stat-sub" id="memDetail">-- / -- GB</div>
+    </div>
+
+    <div class="stat-card" id="diskCard">
+      <div class="stat-label">DISK</div>
+      <div class="stat-value" id="diskPct">--%</div>
+      <div class="stat-bar-wrap"><div class="stat-bar" id="diskBar"></div></div>
+      <div class="stat-sub" id="diskDetail">-- / -- GB</div>
+    </div>
+
+    <div class="stat-card" id="netCard">
+      <div class="stat-label">NETWORK</div>
+      <div class="stat-value net-val">
+        <span id="netSent">-- MB</span>
+        <span class="net-dir">↑</span>
+      </div>
+      <div class="stat-value net-val">
+        <span id="netRecv">-- MB</span>
+        <span class="net-dir">↓</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── Charts row ── -->
+  <section class="charts-row">
+    <div class="chart-card wide">
+      <div class="chart-title">CPU HISTORY <span class="chart-sub">last 60 s</span></div>
+      <canvas id="cpuChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">MEM USAGE <span class="chart-sub">breakdown</span></div>
+      <canvas id="memChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">DISK USAGE <span class="chart-sub">breakdown</span></div>
+      <canvas id="diskChart"></canvas>
+    </div>
+  </section>
+
+  <!-- ── Process table ── -->
+  <section class="table-section">
+
+    <div class="table-toolbar">
+      <div class="toolbar-left">
+        <span class="section-title">PROCESSES</span>
+        <span id="procCount" class="proc-count">0</span>
+      </div>
+      <div class="toolbar-right">
+        <input id="searchBox" type="text" placeholder="Search by name or PID…" class="search-input"/>
+        <select id="sortSelect" class="sort-select">
+          <option value="cpu">Sort: CPU ↓</option>
+          <option value="mem">Sort: Memory ↓</option>
+          <option value="pid">Sort: PID ↓</option>
+          <option value="name">Sort: Name ↑</option>
+        </select>
+        <button id="refreshBtn" class="btn-refresh">⟳ Refresh</button>
+      </div>
+    </div>
+
+    <!-- Alerts banner -->
+    <div id="alertBanner" class="alert-banner hidden"></div>
+
+    <div class="table-wrap">
+      <table class="proc-table">
+        <thead>
+          <tr>
+            <th>PID</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th>CPU %</th>
+            <th>Mem MB</th>
+            <th>Mem %</th>
+            <th>User</th>
+            <th>Threads</th>
+            <th>Started</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="procTableBody">
+          <tr><td colspan="10" class="loading-row">Loading processes…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ── Notification toast ── -->
+  <div id="toast" class="toast hidden"></div>
+
+</div><!-- /app -->
+
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>
